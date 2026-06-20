@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ニューラルネットが学習する様子</title>
+<style>
+  :root{
+    --bg:#f4f6f9; --panel:#ffffff; --line:#e3e7ee; --txt:#1f2430; --sub:#5b6472;
+    --red:#ef4444; --blue:#3b82f6; --accent:#e8890c;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--txt);
+    font-family:"Segoe UI","Hiragino Kaku Gothic ProN",Meiryo,sans-serif;line-height:1.6}
+  header{padding:20px 24px 4px}
+  h1{font-size:20px;margin:0 0 4px}
+  .sub{color:var(--sub);font-size:13px;margin:0;max-width:880px}
+  .wrap{display:flex;flex-wrap:wrap;gap:16px;padding:16px 24px}
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px;
+    box-shadow:0 1px 3px rgba(30,40,60,.06)}
+  .controls{display:flex;flex-wrap:wrap;gap:12px;align-items:center;margin-bottom:12px}
+  button{background:#eef1f5;color:var(--txt);border:1px solid var(--line);
+    border-radius:8px;padding:7px 14px;font-size:14px;cursor:pointer}
+  button:hover{background:#e3e7ee}
+  button.primary{background:var(--accent);color:#fff;border-color:var(--accent);font-weight:600}
+  button.seg{padding:5px 11px;font-size:13px}
+  button.seg.on{background:var(--accent);color:#fff;border-color:var(--accent)}
+  label{font-size:13px;color:var(--sub);display:flex;align-items:center;gap:7px}
+  input[type=range]{width:104px;accent-color:var(--accent)}
+  canvas{display:block;background:#fff;border:1px solid var(--line);border-radius:8px}
+  .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:6px 0}
+  .lab{font-size:12px;color:var(--sub)}
+  .lab b{color:var(--accent)}
+  .stats{display:flex;gap:22px;margin-top:8px}
+  .stat{font-size:13px;color:var(--sub)}
+  .stat b{color:var(--txt);font-size:17px;font-variant-numeric:tabular-nums}
+  .explain{padding:8px 24px 36px;max-width:880px}
+  .explain h2{font-size:15px;margin:18px 0 6px;color:#b5680a}
+  .explain p,.explain li{font-size:13.5px;color:#39414f}
+  code{background:#eef1f5;padding:1px 6px;border-radius:4px;font-size:12.5px;color:#9333ea}
+  .leg{display:inline-block;width:11px;height:11px;border-radius:50%;vertical-align:middle;margin:0 3px}
+</style>
+</head>
+<body>
+<header>
+  <h1>ニューラルネットが学習する様子</h1>
+  <p class="sub">2次元のデータ（<span class="leg" style="background:#ef4444"></span>クラス0 と <span class="leg" style="background:#3b82f6"></span>クラス1）を、隠れ層つきニューラルネットが <b>backprop（誤差逆伝播）</b> で分類していく。背景の色＝NNが「ここはどっち」と思ってる確信度。学習が進むと境界線が育つ。— 生JS単体・本物の順伝播/逆伝播。</p>
+</header>
+
+<div class="wrap">
+  <div class="panel">
+    <div class="controls">
+      <button id="run" class="primary">▶ 学習開始</button>
+      <button id="reset">リセット</button>
+      <span class="lab" style="margin-left:4px">データの形：</span>
+      <button class="seg on" data-dist="circle">円</button>
+      <button class="seg" data-dist="xor">XOR</button>
+      <button class="seg" data-dist="spiral">渦巻き</button>
+      <button class="seg" data-dist="gauss">2つの島</button>
+    </div>
+    <div class="row">
+      <label>隠れニューロン数 <b id="hv" class="lab" style="color:var(--accent)">8</b>
+        <input id="hn" type="range" min="1" max="16" value="8"></label>
+      <label>学習率 <input id="lr" type="range" min="1" max="100" value="30"><span id="lrv" class="lab">0.30</span></label>
+      <label>速度 <input id="speed" type="range" min="1" max="30" value="6"></label>
+    </div>
+    <canvas id="board" width="360" height="360"></canvas>
+    <div class="stats">
+      <div class="stat">エポック<br><b id="sEpoch">0</b></div>
+      <div class="stat">誤差(loss)<br><b id="sLoss">—</b></div>
+      <div class="stat">正解率<br><b id="sAcc">—</b></div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div class="stat" style="margin-bottom:6px">誤差(loss)の推移</div>
+    <canvas id="loss" width="320" height="150"></canvas>
+    <div class="stat" style="margin:12px 0 6px">ネットワークの形</div>
+    <canvas id="net" width="320" height="180"></canvas>
+  </div>
+</div>
+
+<div class="explain">
+  <h2>何が起きているか</h2>
+  <p>NNの形は <code>入力2 → 隠れ層H → 出力1</code>。各点の座標(x,y)を入れると、NNが「クラス1である確率」を返す。最初は重みがデタラメなので背景はぼやけてる。学習は次の繰り返し：</p>
+  <ul>
+    <li><b>順伝播</b>：全データ点をNNに通して、予測を出す</li>
+    <li><b>誤差</b>：予測と正解のズレ（loss）を測る</li>
+    <li><b>逆伝播（backprop）</b>：ズレを減らす方向に、全部の重みを少しずつ動かす（勾配降下）</li>
+  </ul>
+  <p>これを何百回も回すと、背景の境界が <b>データの形に沿って育っていく</b>。これが「学習」。</p>
+  <h2>遊び方</h2>
+  <ul>
+    <li><b>隠れニューロン数を1にしてみる</b> → 直線しか引けず、円や渦巻きを分類できない（＝表現力が足りない）</li>
+    <li><b>増やす（8〜16）</b> → 曲がった境界を学べるようになる。これが「層・ニューロンを増やすと複雑な関数を表せる」の正体</li>
+    <li><b>XOR や 渦巻き</b> は難しいタスク。ニューロンが少ないと詰まる。多いと解ける様子を見比べる</li>
+    <li><b>学習率を上げすぎる</b> → lossが暴れて学習が壊れる（前のデモと同じ話）</li>
+  </ul>
+  <p style="color:var(--sub)">※ これは <a href="https://playground.tensorflow.org" style="color:#b5680a">TensorFlow Playground</a> のミニ自作版。仕組みは同じで、順伝播・逆伝播を全部 生JS で手書きしている。</p>
+</div>
+
+<script>
+"use strict";
+const board=document.getElementById('board'), bx=board.getContext('2d');
+const lossC=document.getElementById('loss'), lx=lossC.getContext('2d');
+const netC=document.getElementById('net'), nx=netC.getContext('2d');
+const ACCENT="#e8890c", GRID="#cdd3dd", SUB="#5b6472";
+
+// ---- データ ----
+let dist='circle', N=240, pts=[];
+function gauss(){let u=0,v=0;while(u===0)u=Math.random();while(v===0)v=Math.random();return Math.sqrt(-2*Math.log(u))*Math.cos(2*Math.PI*v);}
+function genData(){
+  pts=[];
+  if(dist==='spiral'){
+    const n=N/2;
+    for(let i=0;i<n;i++){
+      const r=i/n*0.95, t=i/n*3.2*Math.PI+ (Math.random()*0.3);
+      pts.push({x:r*Math.cos(t), y:r*Math.sin(t), label:0});
+      pts.push({x:r*Math.cos(t+Math.PI), y:r*Math.sin(t+Math.PI), label:1});
+    }
+    return;
+  }
+  for(let i=0;i<N;i++){
+    let x,y,label;
+    if(dist==='gauss'){
+      const c=Math.random()<0.5?0:1;
+      const cx=c?0.45:-0.45, cy=c?0.45:-0.45;
+      x=Math.max(-1,Math.min(1,cx+gauss()*0.22)); y=Math.max(-1,Math.min(1,cy+gauss()*0.22)); label=c;
+    }else{
+      x=Math.random()*2-1; y=Math.random()*2-1;
+      if(dist==='circle') label=(x*x+y*y<0.36)?1:0;
+      else label=((x>0)!==(y>0))?1:0; // xor
+    }
+    pts.push({x,y,label});
+  }
+}
+
+// ---- ニューラルネット (2 -> H -> 1) ----
+let H=8, lr=0.30, W1, b1, W2, b2, epoch=0, lossHist=[], running=false, last={loss:0,acc:0};
+function rnd(){return (Math.random()*2-1)*0.8;}
+function initNN(){
+  W1=[[],[]]; for(let i=0;i<2;i++)for(let j=0;j<H;j++)W1[i][j]=rnd();
+  b1=new Array(H).fill(0);
+  W2=new Array(H); for(let j=0;j<H;j++)W2[j]=rnd();
+  b2=0; epoch=0; lossHist=[];
+}
+function fwd(x,y){
+  const a1=new Array(H);
+  for(let j=0;j<H;j++){ a1[j]=Math.tanh(x*W1[0][j]+y*W1[1][j]+b1[j]); }
+  let z2=b2; for(let j=0;j<H;j++) z2+=a1[j]*W2[j];
+  const out=1/(1+Math.exp(-z2));
+  return {a1,out};
+}
+function trainEpoch(){
+  const gW1=[new Array(H).fill(0), new Array(H).fill(0)];
+  const gb1=new Array(H).fill(0), gW2=new Array(H).fill(0);
+  let gb2=0, loss=0, correct=0;
+  for(const p of pts){
+    const {a1,out}=fwd(p.x,p.y);
+    loss += -(p.label*Math.log(out+1e-9)+(1-p.label)*Math.log(1-out+1e-9));
+    if((out>0.5?1:0)===p.label) correct++;
+    const dz2=out-p.label;            // BCE+sigmoid の微分
+    for(let j=0;j<H;j++){
+      gW2[j]+=a1[j]*dz2;
+      const dz1=(dz2*W2[j])*(1-a1[j]*a1[j]);  // tanh の微分
+      gW1[0][j]+=p.x*dz1; gW1[1][j]+=p.y*dz1; gb1[j]+=dz1;
+    }
+    gb2+=dz2;
+  }
+  const n=pts.length;
+  for(let j=0;j<H;j++){
+    W2[j]-=lr*gW2[j]/n; b1[j]-=lr*gb1[j]/n;
+    W1[0][j]-=lr*gW1[0][j]/n; W1[1][j]-=lr*gW1[1][j]/n;
+  }
+  b2-=lr*gb2/n; epoch++;
+  last={loss:loss/n, acc:correct/n};
+  lossHist.push(last.loss); if(lossHist.length>600) lossHist.shift();
+}
+
+// ---- 描画 ----
+function drawBoard(){
+  const W=board.width, res=48, cell=W/res;
+  for(let i=0;i<res;i++)for(let k=0;k<res;k++){
+    const x=(i+0.5)/res*2-1, y=1-(k+0.5)/res*2;
+    const out=fwd(x,y).out;
+    const r=Math.round(239+(59-239)*out), g=Math.round(68+(130-68)*out), b=Math.round(68+(246-68)*out);
+    bx.fillStyle=`rgba(${r},${g},${b},0.35)`;
+    bx.fillRect(i*cell,k*cell,cell+1,cell+1);
+  }
+  for(const p of pts){
+    const px=(p.x+1)/2*W, py=(1-p.y)/2*W;
+    bx.beginPath(); bx.arc(px,py,4,0,7);
+    bx.fillStyle=p.label?'#3b82f6':'#ef4444'; bx.fill();
+    bx.strokeStyle='#fff'; bx.lineWidth=1.2; bx.stroke();
+  }
+}
+function drawLoss(){
+  const W=lossC.width,Hh=lossC.height,pad=22;
+  lx.clearRect(0,0,W,Hh);
+  lx.strokeStyle=GRID;lx.lineWidth=1;lx.beginPath();lx.moveTo(pad,6);lx.lineTo(pad,Hh-pad);lx.lineTo(W-4,Hh-pad);lx.stroke();
+  lx.fillStyle=SUB;lx.font="10px sans-serif";lx.textAlign="right";lx.fillText("loss",pad-4,12);
+  if(lossHist.length<2)return;
+  const mx=Math.max(...lossHist,0.05);
+  lx.beginPath();lx.strokeStyle=ACCENT;lx.lineWidth=2;
+  lossHist.forEach((v,i)=>{const x=pad+(W-pad-4)*(i/(lossHist.length-1));const y=(Hh-pad)-(Hh-pad-6)*(v/mx);i?lx.lineTo(x,y):lx.moveTo(x,y);});
+  lx.stroke();
+}
+function drawNet(){
+  const W=netC.width,Hh=netC.height;
+  nx.clearRect(0,0,W,Hh);
+  const cols=[[ '入力',2],['隠れ '+H, H],['出力',1]];
+  const X=[40,W/2,W-40];
+  function ny(n,i){return n<=1?Hh/2:24+(Hh-48)*i/(n-1);}
+  // エッジ W1 (入力->隠れ)
+  for(let i=0;i<2;i++)for(let j=0;j<H;j++){
+    const w=W1[i][j]; nx.beginPath();nx.moveTo(X[0],ny(2,i));nx.lineTo(X[1],ny(H,j));
+    nx.strokeStyle=w>0?'#3b82f6':'#ef4444'; nx.globalAlpha=Math.min(0.7,Math.abs(w)*0.5); nx.lineWidth=Math.min(3,Math.abs(w)*1.5);nx.stroke();nx.globalAlpha=1;
+  }
+  // エッジ W2 (隠れ->出力)
+  for(let j=0;j<H;j++){
+    const w=W2[j]; nx.beginPath();nx.moveTo(X[1],ny(H,j));nx.lineTo(X[2],ny(1,0));
+    nx.strokeStyle=w>0?'#3b82f6':'#ef4444'; nx.globalAlpha=Math.min(0.7,Math.abs(w)*0.5); nx.lineWidth=Math.min(3,Math.abs(w)*1.5);nx.stroke();nx.globalAlpha=1;
+  }
+  // ノード
+  function node(x,y,c){nx.beginPath();nx.arc(x,y,7,0,7);nx.fillStyle=c;nx.fill();nx.strokeStyle='#fff';nx.lineWidth=1.5;nx.stroke();}
+  for(let i=0;i<2;i++)node(X[0],ny(2,i),'#64748b');
+  for(let j=0;j<H;j++)node(X[1],ny(H,j),'#94a3b8');
+  node(X[2],ny(1,0),'#e8890c');
+  nx.fillStyle=SUB;nx.font="11px sans-serif";nx.textAlign="center";
+  nx.fillText("入力(x,y)",X[0],Hh-6);nx.fillText("隠れ "+H,X[1],Hh-6);nx.fillText("出力",X[2],Hh-6);
+}
+function draw(){drawBoard();drawLoss();drawNet();}
+function updateInfo(){
+  document.getElementById('sEpoch').textContent=epoch;
+  document.getElementById('sLoss').textContent=epoch?last.loss.toFixed(3):"—";
+  document.getElementById('sAcc').textContent=epoch?(last.acc*100).toFixed(0)+"%":"—";
+}
+
+// ---- ループ & UI ----
+function tick(){
+  if(!running)return;
+  const sp=+document.getElementById('speed').value;
+  for(let e=0;e<sp;e++) trainEpoch();
+  draw();updateInfo();requestAnimationFrame(tick);
+}
+function resetAll(){running=false;document.getElementById('run').textContent="▶ 学習開始";genData();initNN();draw();updateInfo();}
+document.getElementById('run').onclick=function(){running=!running;this.textContent=running?"⏸ 停止":"▶ 学習開始";if(running)requestAnimationFrame(tick);};
+document.getElementById('reset').onclick=resetAll;
+document.getElementById('hn').oninput=function(){H=+this.value;document.getElementById('hv').textContent=H;resetAll();};
+document.getElementById('lr').oninput=function(){lr=+this.value/100;document.getElementById('lrv').textContent=lr.toFixed(2);};
+document.querySelectorAll('.seg').forEach(b=>b.onclick=function(){
+  document.querySelectorAll('.seg').forEach(x=>x.classList.remove('on'));
+  this.classList.add('on'); dist=this.dataset.dist; resetAll();
+});
+
+H=8;lr=0.30;resetAll();
+</script>
+</body>
+</html>

@@ -84,6 +84,7 @@
   <button class="tab active" data-tab="demo">① デモ：特化の創発と崩壊</button>
   <button class="tab" data-tab="theory">② 3つの問い（持論・叩き台）</button>
   <button class="tab" data-tab="cat">③ 圏論レンズ（モナド・dagger/ベイズ逆）</button>
+  <button class="tab" data-tab="nn">④ NN学習で遊ぶ</button>
 </div>
 
 <!-- ================= タブ1：デモ ================= -->
@@ -278,6 +279,16 @@
     <div class="scanwrap"><canvas id="catB" width="560" height="350"></canvas></div>
     <div class="verdict" id="catVerdict" style="max-width:560px">—</div>
     <div class="caveat">恒等からの距離 ‖R†∘R − I‖ = <b id="catInvDist">—</b>。<b style="color:#dc2626">用語の訂正</b>：このベイズ逆 R† は圏論では <b>dagger functor</b>（Fritz/Cho-Jacobs のマルコフ圏の標準構造）であって <b>随伴(F⊣G) ではない</b>。当初「随伴の足場」と書いたのは誤り。「随伴で容量不足を書く」は別問題で未解決——every monad は Kleisli/EM 随伴から来るので確率モナドの随伴が出発点になり得るが、それと "ベイズ逆(dagger)の可逆性" は別の話。エキスパート数（タブ①）を 2 に落とすと非可逆になるのを見てほしい。</div>
+  </div>
+</div>
+
+<!-- ================= タブ4：NN学習デモ（iframe埋め込み）================= -->
+<div id="tab-nn" class="tabview">
+  <div class="note" style="background:#eef6ff;border-color:#bcd8f5;color:#1e40af">
+    <b>おまけ：ニューラルネットが学習する様子</b>（遊び用）。これは MoE/特化/ハルシネーションとは<b>別テーマ</b>で、2次元データを隠れ層つき NN が backprop で分類していく基礎デモ。<a href="https://playground.tensorflow.org" style="color:#1e40af">TensorFlow Playground</a> のミニ自作版。下の枠内で「学習開始」を押すと境界が育つ。
+  </div>
+  <div style="padding:0 24px 24px">
+    <iframe src="nn-playground.html" title="NN学習デモ" style="width:100%;max-width:760px;height:1060px;border:1px solid var(--line);border-radius:12px;background:#fff"></iframe>
   </div>
 </div>
 
