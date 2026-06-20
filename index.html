@@ -1,0 +1,566 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MoE × 強化学習：特化は"いつ壊れるか"</title>
+<style>
+  :root{
+    --bg:#f4f6f9; --panel:#ffffff; --line:#e3e7ee; --txt:#1f2430; --sub:#5b6472;
+    --c0:#ef4444; --c1:#22c55e; --c2:#3b82f6; --exp:#64748b; --accent:#e8890c; --warn:#dc2626;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--txt);
+    font-family:"Segoe UI","Hiragino Kaku Gothic ProN",Meiryo,sans-serif;line-height:1.6}
+  header{padding:20px 24px 4px}
+  h1{font-size:20px;margin:0 0 4px}
+  .sub{color:var(--sub);font-size:13px;margin:0;max-width:920px}
+  .tabs{display:flex;gap:4px;padding:8px 24px 0;border-bottom:1px solid var(--line)}
+  .tab{background:none;border:none;border-bottom:2px solid transparent;padding:10px 18px;
+    font-size:14px;color:var(--sub);cursor:pointer;border-radius:0}
+  .tab:hover{color:var(--txt);background:none}
+  .tab.active{color:var(--accent);border-bottom-color:var(--accent);font-weight:600}
+  .tabview{display:none}
+  .tabview.active{display:block}
+  .wrap{display:flex;flex-wrap:wrap;gap:16px;padding:16px 24px}
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px;
+    box-shadow:0 1px 3px rgba(30,40,60,.06)}
+  .controls{display:flex;flex-wrap:wrap;gap:14px;align-items:center}
+  .knobs{display:flex;flex-wrap:wrap;gap:18px;align-items:center;margin-top:12px;
+    padding-top:12px;border-top:1px dashed var(--line)}
+  button{background:#eef1f5;color:var(--txt);border:1px solid var(--line);
+    border-radius:8px;padding:8px 16px;font-size:14px;cursor:pointer}
+  button:hover{background:#e3e7ee}
+  button.primary{background:var(--accent);color:#fff;border-color:var(--accent);font-weight:600}
+  button:disabled{opacity:.5;cursor:default}
+  label{font-size:13px;color:var(--sub);display:flex;align-items:center;gap:8px}
+  label b{color:var(--txt)}
+  input[type=range]{width:110px;accent-color:var(--accent)}
+  .knob{display:flex;flex-direction:column;gap:2px;align-items:flex-start}
+  .knob .lab{font-size:12px;color:var(--sub)}
+  .knob .lab b{color:var(--accent);font-variant-numeric:tabular-nums}
+  canvas{display:block;background:#ffffff;border:1px solid var(--line);border-radius:8px}
+  .stats{display:flex;gap:24px;flex-wrap:wrap;margin-top:8px}
+  .stat{font-size:13px;color:var(--sub)}
+  .stat b{color:var(--txt);font-size:18px;font-variant-numeric:tabular-nums}
+  .bar{height:8px;background:#e3e7ee;border-radius:4px;overflow:hidden;width:160px;margin-top:6px}
+  .bar>div{height:100%;background:linear-gradient(90deg,var(--c2),var(--c1));width:0%}
+  .verdict{margin-top:10px;font-size:13px;padding:8px 12px;border-radius:8px;
+    background:#fbf7ee;border:1px solid #f0e4cb;max-width:340px}
+  .verdict b{color:var(--accent)}
+  .explain{padding:8px 24px 40px;max-width:920px}
+  .explain h2{font-size:15px;margin:20px 0 6px;color:#b5680a}
+  .explain p,.explain li{font-size:13.5px;color:#39414f}
+  code{background:#eef1f5;padding:1px 6px;border-radius:4px;font-size:12.5px;color:#9333ea}
+  /* タブ2：問い */
+  .note{background:#fff7ed;border:1px solid #fed7aa;border-radius:10px;padding:12px 16px;
+    margin:18px 24px 8px;font-size:13px;color:#9a3412;max-width:940px}
+  .note b{color:#7c2d12}
+  .qcard{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:18px 20px;
+    margin:16px 24px;max-width:940px;box-shadow:0 1px 3px rgba(30,40,60,.06)}
+  .qcard h3{margin:0 0 2px;font-size:16px;color:var(--txt)}
+  .qtag{font-size:12px;color:var(--accent);font-weight:700;letter-spacing:.04em}
+  .qask{font-size:13px;color:var(--sub);margin:6px 0 12px;border-left:3px solid var(--line);padding:2px 12px}
+  .thesis{border-left:3px solid var(--c1);background:#f0fdf4;padding:10px 14px;margin:12px 0;
+    font-size:13.5px;border-radius:0 6px 6px 0;color:#14532d}
+  .thesis b{color:#15803d}
+  .thesis .h{display:block;font-weight:700;color:#15803d;margin-bottom:3px}
+  .figrow{display:flex;flex-wrap:wrap;gap:18px;align-items:center;margin-top:8px}
+  svg.fig{background:#fff;border:1px solid var(--line);border-radius:8px;max-width:100%;height:auto}
+  .scanwrap{overflow-x:auto;margin-top:8px}
+  .small{font-size:12px;color:var(--sub)}
+  .caveat{font-size:12px;color:#b45309;background:#fffbeb;border:1px dashed #fcd34d;
+    border-radius:6px;padding:6px 10px;margin-top:10px}
+  .kcat{font-family:"Cambria Math",Georgia,serif;font-style:italic}
+</style>
+</head>
+<body>
+<header>
+  <h1>MoE × 強化学習：エキスパート特化は <span style="color:var(--warn)">"いつ壊れるか"</span></h1>
+  <p class="sub">報酬だけで分業が<b>創発</b>し、条件次第で<b>崩壊する／起きない／届かない</b>。— contextual bandit + REINFORCE、生JS単体。</p>
+</header>
+
+<div class="tabs">
+  <button class="tab active" data-tab="demo">① デモ：特化の創発と崩壊</button>
+  <button class="tab" data-tab="theory">② 3つの問い（持論・叩き台）</button>
+  <button class="tab" data-tab="cat">③ 圏論レンズ（モナド・dagger/ベイズ逆）</button>
+</div>
+
+<!-- ================= タブ1：デモ ================= -->
+<div id="tab-demo" class="tabview active">
+<div class="wrap">
+  <div class="panel">
+    <div class="controls">
+      <button id="run" class="primary">▶ 開始</button>
+      <button id="stepBtn">1ステップ</button>
+      <button id="reset">リセット</button>
+      <label>速度 <input id="speed" type="range" min="1" max="200" value="60"></label>
+      <label>学習率 <input id="lr" type="range" min="1" max="50" value="12"><span id="lrv">0.12</span></label>
+    </div>
+    <div class="knobs">
+      <div class="knob"><span class="lab">エキスパート数 <b id="nexpv">3</b> <span style="color:#b45309">coverage型</span></span><input id="nexp" type="range" min="1" max="6" value="3"></div>
+      <div class="knob"><span class="lab">ルーター誤配分 <b id="misv">0%</b> <span style="color:#b45309">routing型</span></span><input id="mis" type="range" min="0" max="80" value="0"></div>
+      <div class="knob"><span class="lab">タスク数 <b id="ntaskv">3</b></span><input id="ntask" type="range" min="1" max="3" value="3"></div>
+      <div class="knob"><span class="lab">報酬ノイズ <b id="noisev">0%</b></span><input id="noise" type="range" min="0" max="50" value="0"></div>
+    </div>
+    <canvas id="flow" width="620" height="420" style="margin-top:14px"></canvas>
+    <div class="stats">
+      <div class="stat">ステップ<br><b id="sStep">0</b></div>
+      <div class="stat">平均報酬(直近100)<br><b id="sRew">0.00</b> <span style="color:var(--sub)">/ 上限<span id="sMax">1.00</span>・偶然0.33</span></div>
+      <div class="stat">特化度<br><b id="sSpec">0.00</b><div class="bar"><div id="specBar"></div></div></div>
+    </div>
+    <div class="verdict" id="verdict">—</div>
+  </div>
+  <div class="panel">
+    <div class="stat" style="margin-bottom:6px">報酬の推移（橙=実測 / 緑線=理論上限 / 赤点線=容量上限）</div>
+    <canvas id="reward" width="380" height="190"></canvas>
+    <div class="stat" style="margin-top:12px">context → expert 振り分け(直近200)</div>
+    <canvas id="routing" width="380" height="130"></canvas>
+  </div>
+</div>
+<div class="explain">
+  <h2>3つのツマミが壊すもの</h2>
+  <ul>
+    <li><b>エキスパート数を減らす</b> → <b>容量不足</b>。エキスパート数 &lt; 仕事の種類だと1つのエキスパートが兼任させられ、<b>どんなに学習しても理論上限（赤点線）に届かない</b>（例: エキスパート2・タスク3 で上限0.67）。</li>
+    <li><b>タスク数を減らす</b> → <b>分業が不要</b>。<code>optimalArm(ctx)=ctx % タスク数</code>。タスク1なら全 context の正解が同じ arm。1人で足り、特化は起きない／無意味。</li>
+    <li><b>報酬ノイズを上げる</b> → <b>信号の破壊</b>。確率 noise で報酬を反転。ルーターが正解を読めず、特化が<b>収束しない・崩れる</b>。50%で信号は消える。</li>
+  </ul>
+  <p style="color:var(--sub)">※ エキスパート数・タスク数は構造が変わるので自動リセット。<b>報酬ノイズは走行中でも反映</b>。</p>
+  <h2>見るべきねじれ：特化度は高いのに報酬が低い</h2>
+  <p>容量不足（エキスパート2・タスク3）にすると、ルーターは各 context をきれいに振り分ける（<b>特化度は高い</b>）のに、箱が足りず<b>報酬は0.67で頭打ち</b>。「分業の構造ができること」と「性能が出ること」は別物——これが容量限界の正体。逆にタスク数1にすると<b>報酬は1.0なのに特化度は低い</b>（分業の必要がない）。両側から「特化≠性能」が見える。</p>
+</div>
+</div>
+
+<!-- ================= タブ2：3つの問い ================= -->
+<div id="tab-theory" class="tabview">
+  <div class="note">
+    <b>⚠️ AIが立てた叩き台＋文献点検済み（2026-06）</b>。3問とも裏取りの結果 <b>「既出 or 新規性ゼロ」</b> と判明（随伴=dagger級の捏造は無し／③の像分解は標準数学で正しい）。各問いの caveat に <b>「既出は誰か／自分の差分はどこか」</b> を明記した。新規性は薄いが、先生と圏論を議論する土台として置く。
+    <b>問い①は左のデモと同じ仕組みの実データ</b>で自分で再現できる。
+  </div>
+
+  <!-- 問い① -->
+  <div class="qcard">
+    <span class="qtag">問い ①　実データで答える</span>
+    <h3>崩壊は「離散的な相転移」か「連続的な劣化」か</h3>
+    <div class="qask">ノイズを上げると特化はある閾値で一気に壊れるのか、滑らかに溶けるのか。「離散 vs 連続」で言うとどちら側か。</div>
+    <div class="thesis">
+      <span class="h">叩き台の持論：「両方」。指標によって崩れ方が違う。</span>
+      <b>性能（報酬）は連続的に劣化</b>するが、<b>内部構造（特化度）は閾値を超えると相転移的に急落</b>する。
+      同じノイズという1つのツマミでも、「外から見た性能」と「中の分業構造」は別の壊れ方をする——という主張。下のボタンで実際にスキャンして確かめられる。
+    </div>
+    <div style="margin:10px 0">
+      <button id="scanBtn" class="primary">スキャン実行（ノイズ 0→50%）</button>
+      <span id="scanStatus" class="small"></span>
+    </div>
+    <div class="scanwrap"><canvas id="scan" width="880" height="320"></canvas></div>
+    <p class="small">各ノイズ値で MoE(エキスパート3・タスク3) をゼロから学習し、収束後の報酬と特化度を測る（各点3試行平均）。
+      <span style="color:#dc2626">赤い縦線</span>＝特化度が最も急に落ちる位置＝相転移の閾値。</p>
+    <div class="caveat"><b>文献上の現在地</b>：「性能(外部指標)は連続／構造(内部指標)は離散」は<b>既出の論争</b>——Schaefferの「相転移は指標の錯覚」に対し developmental interpretability[2508.15841] が「内部の連続診断で不連続を検出」と反論、grokking も一次相転移[2606.17120]として既出。<b>自分の差分</b>＝MoE×RL の最小トイで報酬(性能)と特化度(構造)の乖離を1つの系で操作的に出せること。閾値46%等はトイ固有でスケール則ではない。</div>
+  </div>
+
+  <!-- 問い② -->
+  <div class="qcard">
+    <span class="qtag">問い ②　圏論で見立てる（要検証・先行研究あり）</span>
+    <h3>ハルシネーションは1種類ではない —— 圏論で2つの型に割る</h3>
+    <div class="qask">「正しい専門家に振り分けられない」を圏論で。ただし先行研究(TEE[2601.04416]・Misrouted[2605.07260])が既に「容量制限 vs 配分失敗」を分離済み。本研究の差分は<b>2型を圏論で形式化し、RL最小モデルで"天井の上下"として操作的に出し分ける</b>こと。</div>
+    <div class="figrow">
+      <div style="flex:1;min-width:262px">
+        <div class="small" style="text-align:center;color:#b45309;font-weight:700;margin-bottom:4px">coverage型：射が作れない</div>
+        <svg class="fig" viewBox="0 0 300 222" width="300">
+          <defs><marker id="arA" markerWidth="9" markerHeight="9" refX="7.5" refY="3" orient="auto"><path d="M0,0 L7.5,3 L0,6 Z" fill="#64748b"/></marker>
+          <marker id="arAR" markerWidth="9" markerHeight="9" refX="7.5" refY="3" orient="auto"><path d="M0,0 L7.5,3 L0,6 Z" fill="#dc2626"/></marker></defs>
+          <text x="42" y="16" fill="#5b6472" font-size="11" text-anchor="middle">ctx</text>
+          <text x="150" y="16" fill="#5b6472" font-size="11" text-anchor="middle">expert</text>
+          <text x="258" y="16" fill="#5b6472" font-size="11" text-anchor="middle">arm</text>
+          <line x1="58" y1="50" x2="134" y2="78" stroke="#64748b" stroke-width="2" marker-end="url(#arA)"/>
+          <line x1="58" y1="170" x2="134" y2="86" stroke="#64748b" stroke-width="2" marker-end="url(#arA)"/>
+          <line x1="58" y1="110" x2="134" y2="150" stroke="#64748b" stroke-width="2" marker-end="url(#arA)"/>
+          <line x1="166" y1="78" x2="240" y2="52" stroke="#64748b" stroke-width="2" marker-end="url(#arA)"/>
+          <line x1="166" y1="150" x2="240" y2="112" stroke="#64748b" stroke-width="2" marker-end="url(#arA)"/>
+          <path d="M58,170 C 150,206 216,200 248,172" fill="none" stroke="#dc2626" stroke-width="2" stroke-dasharray="5 3" marker-end="url(#arAR)"/>
+          <text x="150" y="216" fill="#dc2626" font-size="10" text-anchor="middle">C2→A2 が作れない（E0 に潰れる）</text>
+          <circle cx="42" cy="50" r="15" fill="#ef4444"/><text x="42" y="54" fill="#fff" font-size="11" text-anchor="middle">C0</text>
+          <circle cx="42" cy="110" r="15" fill="#22c55e"/><text x="42" y="114" fill="#fff" font-size="11" text-anchor="middle">C1</text>
+          <circle cx="42" cy="170" r="15" fill="#3b82f6"/><text x="42" y="174" fill="#fff" font-size="11" text-anchor="middle">C2</text>
+          <circle cx="150" cy="78" r="15" fill="#64748b"/><text x="150" y="82" fill="#fff" font-size="11" text-anchor="middle">E0</text>
+          <circle cx="150" cy="150" r="15" fill="#4f46e5"/><text x="150" y="154" fill="#fff" font-size="11" text-anchor="middle">E1</text>
+          <circle cx="258" cy="50" r="15" fill="#ef4444"/><text x="258" y="54" fill="#fff" font-size="11" text-anchor="middle">A0</text>
+          <circle cx="258" cy="110" r="15" fill="#22c55e"/><text x="258" y="114" fill="#fff" font-size="11" text-anchor="middle">A1</text>
+          <circle cx="258" cy="170" r="15" fill="#3b82f6"/><text x="258" y="174" fill="#fff" font-size="11" text-anchor="middle">A2</text>
+        </svg>
+      </div>
+      <div style="flex:1;min-width:262px">
+        <div class="small" style="text-align:center;color:#b45309;font-weight:700;margin-bottom:4px">routing型：射はあるのに選び損なう</div>
+        <svg class="fig" viewBox="0 0 300 222" width="300">
+          <defs><marker id="arB" markerWidth="9" markerHeight="9" refX="7.5" refY="3" orient="auto"><path d="M0,0 L7.5,3 L0,6 Z" fill="#94a3b8"/></marker>
+          <marker id="arBR" markerWidth="9" markerHeight="9" refX="7.5" refY="3" orient="auto"><path d="M0,0 L7.5,3 L0,6 Z" fill="#dc2626"/></marker></defs>
+          <text x="42" y="16" fill="#5b6472" font-size="11" text-anchor="middle">ctx</text>
+          <text x="150" y="16" fill="#5b6472" font-size="11" text-anchor="middle">expert</text>
+          <text x="258" y="16" fill="#5b6472" font-size="11" text-anchor="middle">arm</text>
+          <line x1="58" y1="64" x2="134" y2="64" stroke="#cbd5e1" stroke-width="2" marker-end="url(#arB)"/>
+          <line x1="166" y1="64" x2="240" y2="64" stroke="#cbd5e1" stroke-width="2" marker-end="url(#arB)"/>
+          <line x1="56" y1="72" x2="134" y2="150" stroke="#dc2626" stroke-width="2.6" marker-end="url(#arBR)"/>
+          <line x1="166" y1="150" x2="240" y2="120" stroke="#dc2626" stroke-width="2.6" marker-end="url(#arBR)"/>
+          <text x="150" y="206" fill="#5b6472" font-size="10" text-anchor="middle">正しい道(灰) C0→E0→A0 がある</text>
+          <text x="150" y="218" fill="#dc2626" font-size="10" text-anchor="middle">のに赤を選び A1 を誤答</text>
+          <circle cx="42" cy="64" r="15" fill="#ef4444"/><text x="42" y="68" fill="#fff" font-size="11" text-anchor="middle">C0</text>
+          <circle cx="150" cy="64" r="15" fill="#64748b"/><text x="150" y="68" fill="#fff" font-size="11" text-anchor="middle">E0</text>
+          <circle cx="150" cy="150" r="15" fill="#4f46e5"/><text x="150" y="154" fill="#fff" font-size="11" text-anchor="middle">E1</text>
+          <circle cx="258" cy="64" r="15" fill="#ef4444"/><text x="258" y="68" fill="#fff" font-size="11" text-anchor="middle">A0</text>
+          <circle cx="258" cy="120" r="15" fill="#22c55e"/><text x="258" y="124" fill="#fff" font-size="11" text-anchor="middle">A1</text>
+        </svg>
+      </div>
+    </div>
+    <div class="thesis">
+      <span class="h">叩き台の持論：ハルシネーションは圏論的に異なる2つの失敗。</span>
+      <b>coverage型</b>＝エキスパートという中間対象が足りない。C0とC2が同じE0に潰れ<b>割り当てが単射でない</b>→正しいarmに分離できず、正しい射が<b>そもそも作れない</b>（構造的）。デモでは天井が下がる（実測: 上限0.67・特化度0.95）。<br>
+      <b>routing型</b>＝正しいエキスパートは存在する（各ctxに担当Eがある）のに<b>ルーターが誤った射を選ぶ</b>。正しい射 <span class="kcat">C0→E0→A0</span> が図式に<b>存在するのに</b>別の射 <span class="kcat">C0→E1→A1</span> が選ばれる（選択的）。デモでは<b>天井1.0のまま実測だけ落ちる</b>（実測: 報酬0.50・特化度1.0＝能力は満点）。<br>
+      つまり <b>coverage型＝射が作れない／routing型＝射はあるのに選び損なう</b>。これがMisrouted[2605.07260]の「容量制限 vs 配分失敗」の圏論的な対応物。
+    </div>
+    <div class="caveat">引用上の立ち位置：「2型が別物」自体は既出（TEE[2601.04416]が概念分離、Misrouted[2605.07260]が実LLMで実証）。本研究の差分は <b>単射性の破れ(coverage)／射選択の失敗(routing) という圏論的特徴づけ</b> と <b>トイで"天井の上下"が2型を峻別する実証</b>。圏論が新しい予測（2型の境界・容量閾値）を生むかが次の課題。</div>
+  </div>
+
+  <!-- 問い③ -->
+  <div class="qcard">
+    <span class="qtag">問い ③　圏論で見立てる（要検証）</span>
+    <h3>特化の創発を「報酬最大化の普遍性」として書けるか</h3>
+    <div class="qask">分業が設計でなく報酬最大化から自然に出てくること自体を、universal property として記述できるか。</div>
+    <div class="figrow">
+      <svg class="fig" viewBox="0 0 540 220" width="540">
+        <defs><marker id="ar3" markerWidth="9" markerHeight="9" refX="7.5" refY="3" orient="auto"><path d="M0,0 L7.5,3 L0,6 Z" fill="#64748b"/></marker></defs>
+        <!-- f: context -> arm (上の弧) -->
+        <path d="M80,70 C 230,18 360,18 470,70" fill="none" stroke="#15803d" stroke-width="2.5" marker-end="url(#ar3)"/>
+        <text x="275" y="26" fill="#15803d" font-size="12" text-anchor="middle">f ＝ 正解（context→arm）</text>
+        <!-- r, p (下の経路) -->
+        <line x1="100" y1="92" x2="232" y2="150" stroke="#64748b" stroke-width="2" marker-end="url(#ar3)"/>
+        <line x1="288" y1="150" x2="452" y2="92" stroke="#64748b" stroke-width="2" marker-end="url(#ar3)"/>
+        <text x="150" y="135" fill="#5b6472" font-size="12">r（ルーター・全射）</text>
+        <text x="330" y="135" fill="#5b6472" font-size="12">p（方策・単射）</text>
+        <!-- nodes -->
+        <circle cx="70" cy="80" r="22" fill="#eef1f5" stroke="#cbd5e1"/><text x="70" y="84" fill="#1f2430" font-size="12" text-anchor="middle">context</text>
+        <circle cx="470" cy="80" r="22" fill="#eef1f5" stroke="#cbd5e1"/><text x="470" y="84" fill="#1f2430" font-size="12" text-anchor="middle">arm</text>
+        <rect x="232" y="150" width="76" height="34" rx="8" fill="#4f46e5"/><text x="270" y="171" fill="#fff" font-size="12" text-anchor="middle">expert</text>
+        <text x="270" y="205" fill="#5b6472" font-size="11" text-anchor="middle">＝ 正解で同値な context の商（最小の中間）</text>
+      </svg>
+    </div>
+    <div class="thesis">
+      <span class="h">叩き台の持論：特化＝正解関数 f の「最小の中間対象による因数分解」。</span>
+      正解 <span class="kcat">f: context→arm</span> を、ルーター <span class="kcat">r</span> とエキスパート方策 <span class="kcat">p</span> の合成 <span class="kcat">f = p∘r</span> に分解する。
+      正解 arm が同じ context は1つのエキスパートにまとめてよい（<b>商＝同値類で割る</b>）。
+      エキスパート数＝正解 arm のユニーク数のとき、この分解は <b>epi-mono 分解（像）</b>に一致：r は全射（商への射）、p は単射的（像→arm）。
+      <b>報酬最大化は、この「最小の中間を通る因数分解」を勾配で自動的に見つけている</b>——これがある種の<b>普遍性</b>（像の普遍性／余等化子）だ、という見立て。
+      <b>①②③が繋がる</b>：容量不足（②）＝「この最小の中間より小さい対象に押し込んで分解が壊れる」、相転移（①）＝「ノイズで因数分解の探索が閾値を境に失敗する」。
+    </div>
+    <div class="caveat"><b>文献点検の結果</b>：epi-mono分解と像の普遍性は<b>標準数学で正しい</b>（＝随伴=dagger のような捏造ではない）が、<b>基礎すぎて新規性はゼロ</b>——「特化＝像分解」は既存概念への翻訳どまり。「最適方策＝像分解」は容量ぴったりで成立（手計算）だが一般は<b>要証明</b>。注意：MoE特化の"factorization"は別物が既出（μMoE[2402.12550]＝テンソル分解）。<b>これ単体で新規性は主張できない</b>。</div>
+  </div>
+</div>
+
+<!-- ================= タブ3：圏論レンズ ================= -->
+<div id="tab-cat" class="tabview">
+  <div class="note">
+    <b>圏論レンズ（モナド と dagger＝ベイズ逆）</b>。確実に正しいのは<b>確率核・Kleisli合成・ベイズ逆(dagger)</b>まで。
+    ここで使うのは確率モナドの<b>dagger 構造（ベイズ逆、Fritz/Cho-Jacobs のマルコフ圏で確立）</b>。容量不足を<b>情報の非可逆性</b>として見せる。<b style="color:#dc2626">訂正：これは「随伴(F⊣G)」ではない</b> —— ベイズ逆は dagger functor であって随伴とは別物（最初"随伴の足場"と書いたのは誤り。下のcaveat参照）。学習は<b>タブ①と同じモデル</b>を共有。
+  </div>
+  <div class="qcard">
+    <span class="qtag">ビューA　モナド：Kleisli合成（確実に正しい）</span>
+    <h3>君のデモは丸ごと「確率核の合成」で書ける</h3>
+    <div class="qask">ルーター R・エキスパート E は確率行列（マルコフ核）。合成 <span class="kcat">E∘R</span>（＝Kleisli合成＝核の積）が目標核 f に一致すれば正解。<b>ハルシネーション＝合成核が f から離れること</b>。色が濃いほど確率1。</div>
+    <div style="margin:8px 0">
+      <button id="catRun" class="primary">▶ 学習</button> <button id="catReset">リセット</button>
+      <span class="small" style="margin-left:8px">ハルシネーション距離 ‖E∘R − f‖ = <b id="catDist">—</b>（0で完全一致）</span>
+    </div>
+    <div class="scanwrap"><canvas id="catA" width="560" height="350"></canvas></div>
+  </div>
+  <div class="qcard">
+    <span class="qtag">ビューB　dagger 構造：ベイズ逆と可逆性</span>
+    <h3>容量不足 ＝ 情報が戻らない（非可逆）</h3>
+    <div class="qask">R の<b>ベイズ逆 R†</b>（事後分布 P(c|e)、マルコフ圏の標準概念）で「expert→どの context だったか」を逆算。<span class="kcat">R†∘R</span> が<b>恒等に近いほど routing は可逆＝情報を保存</b>。容量不足だと潰れて戻らない。</div>
+    <div class="scanwrap"><canvas id="catB" width="560" height="350"></canvas></div>
+    <div class="verdict" id="catVerdict" style="max-width:560px">—</div>
+    <div class="caveat">恒等からの距離 ‖R†∘R − I‖ = <b id="catInvDist">—</b>。<b style="color:#dc2626">用語の訂正</b>：このベイズ逆 R† は圏論では <b>dagger functor</b>（Fritz/Cho-Jacobs のマルコフ圏の標準構造）であって <b>随伴(F⊣G) ではない</b>。当初「随伴の足場」と書いたのは誤り。「随伴で容量不足を書く」は別問題で未解決——every monad は Kleisli/EM 随伴から来るので確率モナドの随伴が出発点になり得るが、それと "ベイズ逆(dagger)の可逆性" は別の話。エキスパート数（タブ①）を 2 に落とすと非可逆になるのを見てほしい。</div>
+  </div>
+</div>
+
+<script>
+"use strict";
+let N_CTX=3, N_ARM=3, N_EXP=3, N_TASK=3, noiseRate=0, misrouteRate=0;
+const CTX_COLORS=["#ef4444","#22c55e","#3b82f6"];
+const EXP_COLORS=["#64748b","#4f46e5","#9333ea","#db2777","#ea580c","#0d9488"];
+const optimalArm = ctx => ctx % N_TASK;
+const INK_SUB="#5b6472", GRID="#cdd3dd", ACCENT="#e8890c", G_GREEN="#16a34a", G_RED="#dc2626", G_BLUE="#2563eb";
+
+let Wr, We, baseline, step, rewardHist, routeWin, lr, running, last;
+
+function init2d(r,c){const m=[];for(let i=0;i<r;i++){const row=[];for(let j=0;j<c;j++)row.push((Math.random()-0.5)*0.1);m.push(row);}return m;}
+function softmax(a){const mx=Math.max(...a);const e=a.map(v=>Math.exp(v-mx));const s=e.reduce((x,y)=>x+y,0);return e.map(v=>v/s);}
+function sample(p){let r=Math.random();for(let i=0;i<p.length;i++){r-=p[i];if(r<=0)return i;}return p.length-1;}
+
+function theoreticalMax(){
+  const groups={};
+  for(let c=0;c<N_CTX;c++){const v=optimalArm(c);groups[v]=(groups[v]||0)+1;}
+  const sizes=Object.values(groups).sort((a,b)=>b-a);
+  let covered=0;for(let i=0;i<Math.min(N_EXP,sizes.length);i++) covered+=sizes[i];
+  return covered/N_CTX;
+}
+function reset(){
+  Wr=init2d(N_CTX,N_EXP); We=init2d(N_EXP,N_ARM);
+  baseline=0; step=0; rewardHist=[]; last=null; routeWin=[];
+  draw(); updateStats(); drawCat();
+}
+function doStep(){
+  const ctx=Math.floor(Math.random()*N_CTX);
+  const rp=softmax(Wr[ctx]); const exp=sample(rp);
+  const ep=softmax(We[exp]); const arm=sample(ep);
+  // 学習は正常な選択で（報酬ノイズだけが学習信号に乗る）
+  let learnR=(arm===optimalArm(ctx))?1:0;
+  if(Math.random()<noiseRate) learnR=1-learnR;
+  const adv=learnR-baseline;
+  for(let e=0;e<N_EXP;e++) Wr[ctx][e]+=lr*adv*((e===exp?1:0)-rp[e]);
+  for(let a=0;a<N_ARM;a++) We[exp][a]+=lr*adv*((a===arm?1:0)-ep[a]);
+  baseline+=0.01*(learnR-baseline);
+  // ★routing型ハルシネーション：確率εで“別の専門家”に誤配分。学習は正常＝能力(We)はそのまま、実行の振り分けだけ失敗
+  let effExp=exp, mis=false;
+  if(N_EXP>1 && Math.random()<misrouteRate){ effExp=(exp+1+Math.floor(Math.random()*(N_EXP-1)))%N_EXP; mis=true; }
+  const effArm = mis ? sample(softmax(We[effExp])) : arm;
+  const effR=(effArm===optimalArm(ctx))?1:0;   // 表示・記録は“実効”報酬（誤配分込み）
+  step++;
+  rewardHist.push(effR); if(rewardHist.length>2000) rewardHist.shift();
+  routeWin.push({ctx,exp:effExp}); if(routeWin.length>200) routeWin.shift();
+  last={ctx,exp:effExp,arm:effArm,reward:effR,rp,ep,mis};
+}
+function specialization(){
+  if(N_EXP<=1) return null;
+  let s=0;for(let c=0;c<N_CTX;c++){const p=softmax(Wr[c]);s+=Math.max(...p);}
+  s/=N_CTX;
+  return Math.max(0,(s-1/N_EXP)/(1-1/N_EXP));
+}
+function avgReward(){const w=rewardHist.slice(-100);if(!w.length)return 0;return w.reduce((a,b)=>a+b,0)/w.length;}
+
+// ---- 描画(タブ1) ----
+const flow=document.getElementById("flow"), fx=flow.getContext("2d");
+const rew=document.getElementById("reward"), rx=rew.getContext("2d");
+const rt=document.getElementById("routing"), tx=rt.getContext("2d");
+const COL_X=[90,310,530];
+function colCount(col){return col===0?N_CTX:col===1?N_EXP:N_ARM;}
+function nodePos(col,i){const n=colCount(col),top=64,bot=flow.height-28;const y=n<=1?(top+bot)/2:top+(bot-top)*i/(n-1);return {x:COL_X[col],y};}
+function nodeR(){const top=64,bot=flow.height-28;const gap=N_EXP<=1?120:(bot-top)/(N_EXP-1);return Math.max(14,Math.min(26,gap*0.44));}
+function drawFlow(){
+  fx.clearRect(0,0,flow.width,flow.height);
+  fx.fillStyle=INK_SUB;fx.font="13px sans-serif";fx.textAlign="center";
+  fx.fillText("context(状況)",90,28);fx.fillText("expert × "+N_EXP,310,28);fx.fillText("arm(行動)",530,28);
+  fx.fillStyle="#b45309";fx.font="11px sans-serif";
+  fx.fillText("← ルーター(振り分け) →",200,46);fx.fillText("← エキスパート(処理) →",420,46);
+  const R=nodeR();
+  for(let c=0;c<N_CTX;c++){const p=softmax(Wr[c]);for(let e=0;e<N_EXP;e++) drawEdge(nodePos(0,c),nodePos(1,e),p[e],CTX_COLORS[c],last&&last.ctx===c&&last.exp===e,R);}
+  for(let e=0;e<N_EXP;e++){const p=softmax(We[e]);for(let a=0;a<N_ARM;a++) drawEdge(nodePos(1,e),nodePos(2,a),p[a],EXP_COLORS[e%EXP_COLORS.length],last&&last.exp===e&&last.arm===a,R);}
+  for(let c=0;c<N_CTX;c++) drawNode(nodePos(0,c),CTX_COLORS[c],last&&last.ctx===c,"C"+c,R);
+  for(let e=0;e<N_EXP;e++) drawNode(nodePos(1,e),EXP_COLORS[e%EXP_COLORS.length],last&&last.exp===e,"E"+e,R);
+  for(let a=0;a<N_ARM;a++) drawNode(nodePos(2,a),CTX_COLORS[a],last&&last.arm===a,"A"+a,R,!optimalArmUsed(a));
+}
+function optimalArmUsed(a){for(let c=0;c<N_CTX;c++)if(optimalArm(c)===a)return true;return false;}
+function drawEdge(p1,p2,w,color,active,R){
+  if(w<0.02)return;
+  fx.beginPath();fx.moveTo(p1.x+R,p1.y);fx.lineTo(p2.x-R,p2.y);
+  fx.lineWidth=active?4:Math.max(0.6,w*7);
+  fx.strokeStyle=active?ACCENT:color;fx.globalAlpha=active?1:0.22+w*0.62;fx.stroke();fx.globalAlpha=1;
+}
+function drawNode(p,color,active,label,R,dim){
+  fx.beginPath();fx.arc(p.x,p.y,R,0,Math.PI*2);
+  fx.fillStyle=color;fx.globalAlpha=dim?0.22:(active?1:0.9);fx.fill();fx.globalAlpha=1;
+  if(active){fx.lineWidth=3;fx.strokeStyle=ACCENT;fx.stroke();}
+  fx.fillStyle="#fff";fx.font=Math.round(R*0.5)+"px sans-serif";fx.textAlign="center";fx.textBaseline="middle";
+  fx.globalAlpha=dim?0.55:1;fx.fillText(label,p.x,p.y);fx.globalAlpha=1;
+}
+function drawReward(){
+  rx.clearRect(0,0,rew.width,rew.height);const W=rew.width,H=rew.height,pad=24;
+  const tMax=theoreticalMax();const ymap=v=>H-pad-(H-2*pad)*v;
+  rx.lineWidth=1;rx.font="10px sans-serif";rx.textAlign="left";rx.setLineDash([4,4]);
+  rx.strokeStyle=G_GREEN;rx.beginPath();rx.moveTo(pad,ymap(tMax));rx.lineTo(W-4,ymap(tMax));rx.stroke();
+  rx.fillStyle=G_GREEN;rx.fillText("上限"+tMax.toFixed(2),2,ymap(tMax)-2);
+  if(tMax<0.999){rx.strokeStyle=G_RED;rx.lineWidth=1.5;rx.beginPath();rx.moveTo(pad,ymap(tMax));rx.lineTo(W-4,ymap(tMax));rx.stroke();
+    rx.fillStyle=G_RED;rx.fillText("容量上限(届かない天井)",60,ymap(tMax)-2);}
+  rx.strokeStyle=GRID;rx.lineWidth=1;rx.beginPath();rx.moveTo(pad,ymap(1/3));rx.lineTo(W-4,ymap(1/3));rx.stroke();
+  rx.fillStyle=INK_SUB;rx.fillText("0.33",2,ymap(1/3)-2);rx.setLineDash([]);
+  const win=20,pts=[];for(let i=0;i<rewardHist.length;i++){const s=rewardHist.slice(Math.max(0,i-win),i+1);pts.push(s.reduce((a,b)=>a+b,0)/s.length);}
+  rx.beginPath();rx.strokeStyle=ACCENT;rx.lineWidth=2;
+  pts.forEach((v,i)=>{const x=pad+(W-pad-4)*(i/Math.max(1,pts.length-1));const y=ymap(v);i?rx.lineTo(x,y):rx.moveTo(x,y);});rx.stroke();
+}
+function drawRouting(){
+  tx.clearRect(0,0,rt.width,rt.height);const W=rt.width,H=rt.height,rowH=H/N_CTX;
+  for(let c=0;c<N_CTX;c++){
+    const sub=routeWin.filter(r=>r.ctx===c);const total=sub.length||1;
+    const counts=Array(N_EXP).fill(0);sub.forEach(r=>counts[r.exp]++);
+    let x=40;const y=c*rowH+6,h=rowH-12;
+    tx.fillStyle=CTX_COLORS[c];tx.font="12px sans-serif";tx.textAlign="left";tx.textBaseline="middle";tx.fillText("C"+c,8,y+h/2);
+    for(let e=0;e<N_EXP;e++){const w=(W-50)*(counts[e]/total);
+      tx.fillStyle=EXP_COLORS[e%EXP_COLORS.length];tx.fillRect(x,y,w,h);
+      if(w>16){tx.fillStyle="#fff";tx.fillText("E"+e,x+4,y+h/2);}x+=w;}
+  }
+}
+function draw(){drawFlow();drawReward();drawRouting();}
+function updateStats(){
+  document.getElementById("sStep").textContent=step;
+  const ar=avgReward(),tMax=theoreticalMax();
+  document.getElementById("sRew").textContent=ar.toFixed(2);
+  document.getElementById("sMax").textContent=tMax.toFixed(2);
+  const sp=specialization();
+  document.getElementById("sSpec").textContent=sp===null?"—":sp.toFixed(2);
+  document.getElementById("specBar").style.width=sp===null?"0%":(sp*100).toFixed(0)+"%";
+  const v=document.getElementById("verdict");let msg;
+  const U=uniqueTasks();
+  const cov=N_EXP<U, rtg=misrouteRate>0.05;
+  if(cov&&rtg) msg=`<b>複合ハルシネーション</b>：容量不足(coverage型)＋誤配分(routing型)。箱も足りず振り分けも外す。`;
+  else if(cov) msg=`<b style="color:#b45309">coverage型ハルシネーション</b>：必要な仕事 ${U} 種に対しエキスパート ${N_EXP} 個。<b>正しい専門家が存在しない</b> → 天井 <b>${tMax.toFixed(2)}</b> に下がる（構造的に不能）。`;
+  else if(rtg) msg=`<b style="color:#b45309">routing型ハルシネーション</b>：誤配分 ${(misrouteRate*100)|0}%。<b>専門家は正しい(特化度↑)のに誤った専門家へ送られる</b> → 天井1.0なのに報酬が届かない（できるのに間違える）。`;
+  else if(U===1) msg=`<b>分業不要</b>：仕事が1種類だけ。1専門家で足り、特化は無意味。`;
+  else if(noiseRate>=0.2) msg=`<b>学習信号の劣化</b>：報酬ノイズ ${(noiseRate*100)|0}%。教師信号が不正確で特化が収束しにくい（データ品質の問題・ハルシネーション2型とは別軸）。`;
+  else if(N_EXP>U) msg=`<b>余剰容量</b>：エキスパート ${N_EXP} 個 > 仕事 ${U} 種。${U} 個が特化し残りは遊ぶ（dead expert）。上限1.0に到達可能。`;
+  else msg=`<b>ちょうど</b>：エキスパート数 = 仕事の種類。きれいな1対1の特化が創発し、報酬は1.0に向かう。`;
+  v.innerHTML=msg;
+}
+function uniqueTasks(){const s=new Set();for(let c=0;c<N_CTX;c++)s.add(optimalArm(c));return s.size;}
+
+// ---- ループ & UI(タブ1) ----
+function tick(){
+  if(!running)return;
+  const perFrame=Math.max(1,Math.round(+document.getElementById("speed").value/8));
+  for(let i=0;i<perFrame;i++) doStep();
+  draw();updateStats();drawCat();requestAnimationFrame(tick);
+}
+document.getElementById("run").onclick=function(){running=!running;this.textContent=running?"⏸ 停止":"▶ 開始";if(running)requestAnimationFrame(tick);};
+document.getElementById("stepBtn").onclick=()=>{doStep();draw();updateStats();};
+document.getElementById("reset").onclick=()=>{running=false;document.getElementById("run").textContent="▶ 開始";reset();};
+document.getElementById("lr").oninput=function(){lr=+this.value/100;document.getElementById("lrv").textContent=lr.toFixed(2);};
+document.getElementById("nexp").oninput=function(){N_EXP=+this.value;document.getElementById("nexpv").textContent=N_EXP;reset();};
+document.getElementById("ntask").oninput=function(){N_TASK=+this.value;document.getElementById("ntaskv").textContent=N_TASK;reset();};
+document.getElementById("noise").oninput=function(){noiseRate=+this.value/100;document.getElementById("noisev").textContent=(this.value|0)+"%";updateStats();};
+document.getElementById("mis").oninput=function(){misrouteRate=+this.value/100;document.getElementById("misv").textContent=(this.value|0)+"%";updateStats();};
+
+// ---- タブ切替 ----
+document.querySelectorAll('.tab').forEach(t=>t.onclick=function(){
+  document.querySelectorAll('.tab').forEach(x=>x.classList.remove('active'));
+  document.querySelectorAll('.tabview').forEach(x=>x.classList.remove('active'));
+  this.classList.add('active');
+  document.getElementById('tab-'+this.dataset.tab).classList.add('active');
+});
+
+// ---- 問い①：相転移スキャン（メインデモと独立した一時重みで学習）----
+function trainOnce(nexp,ntask,noise,iters){
+  const LR=0.15;
+  let wr=init2d(N_CTX,nexp), we=init2d(nexp,N_ARM), base=0;
+  const optA=c=>c%ntask;const hist=[];
+  for(let i=0;i<iters;i++){
+    const ctx=Math.floor(Math.random()*N_CTX);
+    const rp=softmax(wr[ctx]);const exp=sample(rp);
+    const ep=softmax(we[exp]);const arm=sample(ep);
+    let r=(arm===optA(ctx))?1:0;if(Math.random()<noise)r=1-r;
+    const adv=r-base;
+    for(let e=0;e<nexp;e++) wr[ctx][e]+=LR*adv*((e===exp?1:0)-rp[e]);
+    for(let a=0;a<N_ARM;a++) we[exp][a]+=LR*adv*((a===arm?1:0)-ep[a]);
+    base+=0.01*(r-base);hist.push(r);
+  }
+  const w=hist.slice(-100);const rew=w.reduce((a,b)=>a+b,0)/w.length;
+  let s=0;for(let c=0;c<N_CTX;c++){const p=softmax(wr[c]);s+=Math.max(...p);}s/=N_CTX;
+  const spec=nexp<=1?null:Math.max(0,(s-1/nexp)/(1-1/nexp));
+  return {rew,spec};
+}
+// ===== タブ3：圏論レンズ（マルコフ核・Kleisli合成・ベイズ逆。数学は厳密）=====
+function _kern(W){return W.map(r=>softmax(r));}
+function routerKernel(){return _kern(Wr);}      // R: Ctx→Exp  R[c][e]=P(e|c)
+function expertKernel(){return _kern(We);}      // E: Exp→Arm  E[e][a]=P(a|e)
+function composeK(R,E){return R.map(rc=>{const o=Array(N_ARM).fill(0);for(let e=0;e<rc.length;e++)for(let a=0;a<N_ARM;a++)o[a]+=rc[e]*E[e][a];return o;});} // (E∘R)[c][a]=Σ_e R[c][e]E[e][a]
+function targetK(){const f=[];for(let c=0;c<N_CTX;c++){const r=Array(N_ARM).fill(0);r[optimalArm(c)]=1;f.push(r);}return f;}
+function l1(A,B){let s=0;for(let i=0;i<A.length;i++)for(let j=0;j<A[i].length;j++)s+=Math.abs(A[i][j]-B[i][j]);return s/A.length;}
+function bayesInv(R){const pi=1/N_CTX,nE=R[0].length,inv=[];for(let e=0;e<nE;e++){let Z=0;for(let c=0;c<N_CTX;c++)Z+=R[c][e]*pi;const r=Array(N_CTX).fill(0);if(Z>1e-12)for(let c=0;c<N_CTX;c++)r[c]=R[c][e]*pi/Z;inv.push(r);}return inv;} // R†[e][c]=P(c|e)
+function backK(R,Ri){const nE=R[0].length;return R.map(rc=>{const o=Array(N_CTX).fill(0);for(let e=0;e<nE;e++)for(let cp=0;cp<N_CTX;cp++)o[cp]+=rc[e]*Ri[e][cp];return o;});} // (R†∘R)[c][c']
+function idK(n){return Array.from({length:n},(_,i)=>Array.from({length:n},(_,j)=>i==j?1:0));}
+function _lab(p,n){return Array.from({length:n},(_,i)=>p+i);}
+function heat(g,M,x,y,cw,ch,rl,cl,title){
+  g.font="11px sans-serif";g.textAlign="center";g.textBaseline="middle";
+  g.fillStyle="#5b6472";if(title)g.fillText(title,x+M[0].length*cw/2,y-15);
+  for(let i=0;i<M.length;i++)for(let j=0;j<M[i].length;j++){
+    const v=Math.max(0,Math.min(1,M[i][j]));
+    g.fillStyle=`rgb(${Math.round(255-23*v)},${Math.round(255-118*v)},${Math.round(255-243*v)})`;
+    g.fillRect(x+j*cw,y+i*ch,cw-1,ch-1);
+    if(v>0.12){g.fillStyle=v>0.5?"#fff":"#7a8190";g.fillText(v.toFixed(2),x+j*cw+cw/2,y+i*ch+ch/2);}
+  }
+  g.fillStyle="#5b6472";
+  if(rl)for(let i=0;i<rl.length;i++)g.fillText(rl[i],x-13,y+i*ch+ch/2);
+  if(cl)for(let j=0;j<cl.length;j++)g.fillText(cl[j],x+j*cw+cw/2,y+M.length*ch+11);
+}
+function drawCat(){
+  const cA=document.getElementById('catA');if(!cA)return;
+  const R=routerKernel(),E=expertKernel(),C=composeK(R,E),f=targetK();
+  const cw=34,ch=26,Cl=_lab("C",N_CTX),El=_lab("E",N_EXP),Al=_lab("A",N_ARM);
+  const gA=cA.getContext('2d');gA.clearRect(0,0,cA.width,cA.height);
+  const top=34,r2=top+Math.max(N_CTX,N_EXP)*ch+52;
+  heat(gA,R,42,top,cw,ch,Cl,El,"R: Ctx→Exp  P(e|c)");
+  heat(gA,E,42+N_EXP*cw+74,top,cw,ch,El,Al,"E: Exp→Arm  P(a|e)");
+  heat(gA,C,42,r2,cw,ch,Cl,Al,"E∘R  合成(Kleisli)");
+  heat(gA,f,42+N_ARM*cw+74,r2,cw,ch,Cl,Al,"f: 目標(正解)");
+  document.getElementById('catDist').textContent=l1(C,f).toFixed(3);
+  const cB=document.getElementById('catB');if(!cB)return;
+  const Ri=bayesInv(R),bk=backK(R,Ri),I=idK(N_CTX);
+  const gB=cB.getContext('2d');gB.clearRect(0,0,cB.width,cB.height);
+  heat(gB,R,42,top,cw,ch,Cl,El,"R: Ctx→Exp");
+  heat(gB,Ri,42+N_EXP*cw+74,top,cw,ch,El,Cl,"R†: Exp→Ctx (ベイズ逆)");
+  heat(gB,bk,42,r2,cw,ch,Cl,Cl,"R†∘R (戻れるか)");
+  heat(gB,I,42+N_CTX*cw+74,r2,cw,ch,Cl,Cl,"恒等 I (理想)");
+  const dI=l1(bk,I);document.getElementById('catInvDist').textContent=dI.toFixed(3);
+  const m=document.getElementById('catVerdict');
+  if(N_EXP<uniqueTasks()) m.innerHTML=`<b style="color:#dc2626">非可逆（容量不足）</b>：R†∘R が恒等から離れる（${dI.toFixed(2)}）。複数の context が同じ expert に潰れ、ベイズ逆でも元に戻れない＝routing が情報を失っている（dagger でも復元不能）。`;
+  else if(dI<0.25) m.innerHTML=`<b style="color:#15803d">ほぼ可逆（容量十分）</b>：R†∘R ≈ 恒等（${dI.toFixed(2)}）。routing が情報を保存し、ベイズ逆 R† でほぼ元の context に戻れる＝dagger がほぼ等長（情報を保存）。`;
+  else m.innerHTML=`<b>学習途中</b>：R†∘R が恒等に向かう途中（${dI.toFixed(2)}）。学習を回すと可逆性が上がる。`;
+}
+let scanData=[];
+function drawScan(){
+  const c=document.getElementById('scan'),g=c.getContext('2d');
+  const W=c.width,H=c.height,pl=46,pr=140,pt=22,pb=42;
+  g.clearRect(0,0,W,H);
+  const X=n=>pl+(W-pl-pr)*(n/0.5), Y=v=>H-pb-(H-pt-pb)*v;
+  g.strokeStyle=GRID;g.lineWidth=1;
+  g.fillStyle=INK_SUB;g.font="10px sans-serif";g.textAlign="right";
+  [0,0.25,0.5,0.75,1].forEach(v=>{g.beginPath();g.moveTo(pl,Y(v));g.lineTo(W-pr,Y(v));g.stroke();g.fillText(v.toFixed(2),pl-4,Y(v)+3);});
+  g.textAlign="center";[0,0.1,0.2,0.3,0.4,0.5].forEach(n=>g.fillText((n*100)+"%",X(n),H-pb+15));
+  g.fillStyle=INK_SUB;g.fillText("報酬ノイズ →",(pl+W-pr)/2,H-6);
+  // 凡例
+  g.textAlign="left";g.font="12px sans-serif";
+  g.fillStyle=ACCENT;g.fillText("● 報酬（性能）",W-pr+12,pt+8);
+  g.fillStyle=G_BLUE;g.fillText("● 特化度（構造）",W-pr+12,pt+26);
+  if(!scanData.length)return;
+  // 閾値：specの隣接落差が最大の中点
+  let thr=null,md=0;
+  for(let i=1;i<scanData.length;i++){const d=(scanData[i-1].spec??0)-(scanData[i].spec??0);if(d>md){md=d;thr=(scanData[i-1].n+scanData[i].n)/2;}}
+  if(thr!==null&&md>0.08){g.strokeStyle=G_RED;g.setLineDash([5,3]);g.beginPath();g.moveTo(X(thr),pt);g.lineTo(X(thr),H-pb);g.stroke();g.setLineDash([]);
+    g.fillStyle=G_RED;g.textAlign="center";g.font="11px sans-serif";g.fillText("特化が急落 ~"+((thr*100)|0)+"%",X(thr),pt-6<10?pt+12:pt-6);}
+  drawCurve(g,scanData.map(d=>[X(d.n),Y(d.rew)]),ACCENT);
+  drawCurve(g,scanData.filter(d=>d.spec!=null).map(d=>[X(d.n),Y(d.spec)]),G_BLUE);
+}
+function drawCurve(g,pts,color){
+  g.strokeStyle=color;g.lineWidth=2.5;g.beginPath();
+  pts.forEach((p,i)=>i?g.lineTo(p[0],p[1]):g.moveTo(p[0],p[1]));g.stroke();
+  g.fillStyle=color;pts.forEach(p=>{g.beginPath();g.arc(p[0],p[1],3.5,0,7);g.fill();});
+}
+document.getElementById('scanBtn').onclick=async function(){
+  this.disabled=true;scanData=[];
+  const status=document.getElementById('scanStatus');
+  const noises=[0,0.1,0.2,0.3,0.35,0.4,0.43,0.46,0.48,0.5];
+  drawScan();
+  for(let i=0;i<noises.length;i++){
+    const n=noises[i];let r=0,s=0,T=3;
+    for(let t=0;t<T;t++){const res=trainOnce(3,3,n,6000);r+=res.rew;s+=res.spec;}
+    scanData.push({n,rew:r/T,spec:s/T});
+    status.textContent=`計算中… ${i+1}/${noises.length}（ノイズ ${(n*100)|0}%）`;
+    drawScan();
+    await new Promise(res=>setTimeout(res,0));
+  }
+  status.textContent="完了：報酬は連続的に低下／特化度は閾値で急落。";
+  this.disabled=false;
+};
+
+document.getElementById('catRun').onclick=function(){running=!running;this.textContent=running?"⏸ 停止":"▶ 学習";document.getElementById('run').textContent=running?"⏸ 停止":"▶ 開始";if(running)requestAnimationFrame(tick);};
+document.getElementById('catReset').onclick=()=>{running=false;document.getElementById('catRun').textContent="▶ 学習";document.getElementById('run').textContent="▶ 開始";reset();};
+lr=0.12;running=false;reset();drawScan();
+</script>
+</body>
+</html>
