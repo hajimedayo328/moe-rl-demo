@@ -210,6 +210,10 @@ window.onmouseup=()=>drag=false;
 window.onmousemove=e=>{if(drag){rotY+=(e.clientX-lastX)*0.01;lastX=e.clientX;if(!running&&!autoSpin)draw();}};
 
 terrain='bowl';resetBall();kick();
+// iframe内などで「非表示のまま」読み込まれると初回描画と回転ループが空振りする。
+// canvasが実際に画面に出たら描き直し＆ループを起こす。
+try{ new IntersectionObserver(function(es){ if(es.some(function(e){return e.isIntersecting;})){ resetBall(); kick(); } }).observe(cv); }catch(e){}
+window.addEventListener('pageshow', function(){ draw(); kick(); });
 </script>
 </body>
 </html>
