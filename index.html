@@ -85,6 +85,7 @@
   <button class="tab" data-tab="theory">② 3つの問い（持論・叩き台）</button>
   <button class="tab" data-tab="cat">③ 圏論レンズ（モナド・dagger/ベイズ逆）</button>
   <button class="tab" data-tab="nn">④ NN学習で遊ぶ</button>
+  <button class="tab" data-tab="gd">⑤ 勾配降下3D</button>
 </div>
 
 <!-- ================= タブ1：デモ ================= -->
@@ -289,6 +290,16 @@
   </div>
   <div style="padding:0 24px 24px">
     <iframe src="nn-playground.html" title="NN学習デモ" style="width:100%;max-width:760px;height:1060px;border:1px solid var(--line);border-radius:12px;background:#fff"></iframe>
+  </div>
+</div>
+
+<!-- ================= タブ5：勾配降下3D（iframe埋め込み）================= -->
+<div id="tab-gd" class="tabview">
+  <div class="note" style="background:#eef6ff;border-color:#bcd8f5;color:#1e40af">
+    <b>おまけ②：勾配降下を3Dで見る</b>（遊び用）。機械学習の「学習」＝誤差(loss)の地形を一番低い谷へ下ること。玉が転がり落ちる様子・局所解・鞍点を3Dで。これも特化/ハルシネーションとは別テーマの遊び。
+  </div>
+  <div style="padding:0 24px 24px">
+    <iframe src="gd-landscape-3d.html" title="勾配降下3D" style="width:100%;max-width:840px;height:800px;border:1px solid var(--line);border-radius:12px;background:#fff"></iframe>
   </div>
 </div>
 

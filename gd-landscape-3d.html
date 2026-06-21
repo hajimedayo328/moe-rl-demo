@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>勾配降下を3Dで見る（損失の地形）</title>
+<style>
+  :root{--bg:#f4f6f9;--panel:#ffffff;--line:#e3e7ee;--txt:#1f2430;--sub:#5b6472;--accent:#e8890c;}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--txt);
+    font-family:"Segoe UI","Hiragino Kaku Gothic ProN",Meiryo,sans-serif;line-height:1.6}
+  header{padding:20px 24px 4px}
+  h1{font-size:20px;margin:0 0 4px}
+  .sub{color:var(--sub);font-size:13px;margin:0;max-width:880px}
+  .wrap{display:flex;flex-wrap:wrap;gap:16px;padding:16px 24px}
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px;
+    box-shadow:0 1px 3px rgba(30,40,60,.06)}
+  .controls{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:10px}
+  button{background:#eef1f5;color:var(--txt);border:1px solid var(--line);
+    border-radius:8px;padding:7px 13px;font-size:14px;cursor:pointer}
+  button:hover{background:#e3e7ee}
+  button.primary{background:var(--accent);color:#fff;border-color:var(--accent);font-weight:600}
+  button.seg{padding:5px 10px;font-size:12.5px}
+  button.seg.on{background:var(--accent);color:#fff;border-color:var(--accent)}
+  label{font-size:13px;color:var(--sub);display:flex;align-items:center;gap:6px}
+  input[type=range]{width:100px;accent-color:var(--accent)}
+  .lab{font-size:12px;color:var(--sub)} .lab b{color:var(--accent)}
+  canvas{display:block;background:#fff;border:1px solid var(--line);border-radius:8px;cursor:grab}
+  canvas:active{cursor:grabbing}
+  .stats{display:flex;gap:20px;margin-top:8px}
+  .stat{font-size:13px;color:var(--sub)} .stat b{color:var(--txt);font-size:17px;font-variant-numeric:tabular-nums}
+  .explain{padding:8px 24px 36px;max-width:880px}
+  .explain h2{font-size:15px;margin:18px 0 6px;color:#b5680a}
+  .explain p,.explain li{font-size:13.5px;color:#39414f}
+  code{background:#eef1f5;padding:1px 6px;border-radius:4px;font-size:12.5px;color:#9333ea}
+</style>
+</head>
+<body>
+<header>
+  <h1>勾配降下を3Dで見る ― 損失の地形をボールが転がり落ちる</h1>
+  <p class="sub">機械学習の「学習」は、<b>誤差(loss)という山の地形を、一番低い谷へ下っていく</b>こと。オレンジの玉が今いる場所、軌跡が下りてきた道。地形をドラッグで回せる。— 純JS・擬似3D。</p>
+</header>
+
+<div class="wrap">
+  <div class="panel">
+    <div class="controls">
+      <button id="run" class="primary">▶ 下る</button>
+      <button id="reset">別の場所から</button>
+      <span class="lab" style="margin-left:4px">地形：</span>
+      <button class="seg on" data-t="bowl">お椀</button>
+      <button class="seg" data-t="double">谷が2つ</button>
+      <button class="seg" data-t="saddle">鞍(あん)点</button>
+      <button class="seg" data-t="rosen">バナナ谷</button>
+      <button class="seg" data-t="bumpy">でこぼこ</button>
+    </div>
+    <div class="controls">
+      <label>学習率 <input id="lr" type="range" min="1" max="120" value="30"><span id="lrv" class="lab">0.030</span></label>
+      <label>慣性(momentum) <input id="mom" type="range" min="0" max="95" value="80"><span id="momv" class="lab">0.80</span></label>
+      <label>自動回転 <input id="spin" type="checkbox" checked></label>
+    </div>
+    <canvas id="cv" width="480" height="420"></canvas>
+    <div class="stats">
+      <div class="stat">ステップ<br><b id="sStep">0</b></div>
+      <div class="stat">今の誤差(loss)<br><b id="sLoss">—</b></div>
+      <div class="stat">勾配の強さ<br><b id="sGrad">—</b></div>
+    </div>
+  </div>
+  <div class="panel" style="max-width:300px">
+    <div class="stat" style="margin-bottom:6px">真上から見た図（等高線）</div>
+    <canvas id="top" width="240" height="240"></canvas>
+    <p class="lab" style="margin-top:8px">青＝低い(谷)／赤＝高い(山)。オレンジ＝玉の道。<br>3Dの地形を真上から見るとこう。</p>
+  </div>
+</div>
+
+<div class="explain">
+  <h2>何を見ているか</h2>
+  <p>玉の位置は2つの数字 <code>(a, b)</code>＝「調整中のパラメータ（重み）」。高さ <code>L(a,b)</code>＝そのときの<b>誤差</b>。学習とは「誤差を一番小さくする (a,b) を探す」こと＝<b>地形の一番低い谷を見つける</b>こと。</p>
+  <ul>
+    <li><b>勾配降下</b>：今いる場所で「一番急に下る向き」を調べて、その方向へ一歩進む。これを繰り返すと谷へ落ちる</li>
+    <li><b>学習率</b>＝一歩の大きさ。小さいと遅い、大きすぎると<b>谷を飛び越えて暴れる・発散する</b></li>
+    <li><b>慣性(momentum)</b>＝玉の「転がる勢い」。坂で加速し、小さなくぼみを乗り越えて先へ進める</li>
+  </ul>
+  <h2>地形ごとの遊び</h2>
+  <ul>
+    <li><b>お椀</b>：谷が1つだけ。素直に底へ落ちる（理想）</li>
+    <li><b>谷が2つ</b>：<b>局所解</b>。手前の浅い谷にハマると、もっと深い谷に行けない。慣性を上げると抜けられることも</li>
+    <li><b>鞍点</b>：馬の鞍の形。平らな所で勾配がほぼ0になり<b>動けなくなる</b>（深層学習の難所）</li>
+    <li><b>バナナ谷(Rosenbrock)</b>：細long い曲がった谷。勾配降下が<b>ジグザグして全然進まない</b>定番の難問</li>
+    <li><b>でこぼこ</b>：あちこちにくぼみ。スタート位置で行き先が変わる</li>
+  </ul>
+  <p style="color:var(--sub)">※ 本物のNNはパラメータが数千〜数十億個（数千次元の地形）。ここでは2個に絞った「おもちゃの地形」。仕組みは同じ。</p>
+</div>
+
+<script>
+"use strict";
+const cv=document.getElementById('cv'), g=cv.getContext('2d');
+const top=document.getElementById('top'), tg=top.getContext('2d');
+let terrain='bowl', lr=0.03, mom=0.80, autoSpin=true;
+let rotY=0.7, ba=0, bb=0, va=0, vb=0, traj=[], step=0, running=false, last={loss:0,grad:0};
+
+// ---- 損失の地形 L(a,b) ----
+function L(a,b){
+  switch(terrain){
+    case 'bowl': return 0.45*(a*a+b*b);
+    case 'double': return 1.7 - 1.0*Math.exp(-((a-1.0)*(a-1.0)+b*b)*1.3) - 1.55*Math.exp(-((a+1.0)*(a+1.0)+b*b)*1.3);
+    case 'saddle': return 1.3 + 0.42*(a*a - b*b);
+    case 'rosen': return Math.min(3.4, 0.025*((1-a)*(1-a)+80*(b-a*a)*(b-a*a)));
+    case 'bumpy': return 1.4 + 0.55*Math.sin(2.1*a)*Math.cos(2.1*b) + 0.18*(a*a+b*b);
+  }
+  return 0;
+}
+function gradL(a,b){const e=0.0015; return {a:(L(a+e,b)-L(a-e,b))/(2*e), b:(L(a,b+e)-L(a,b-e))/(2*e)};}
+const clamp=(v,lo,hi)=>Math.max(lo,Math.min(hi,v));
+
+// ---- 擬似3D投影 ----
+const cx=240, cy=255, scale=70, hScale=58, tilt=0.52;
+function proj(a,h,b){
+  const c=Math.cos(rotY), s=Math.sin(rotY);
+  const rx=a*c-b*s, rz=a*s+b*c;
+  return {x:cx+rx*scale, y:cy-h*hScale+rz*scale*tilt, depth:rz};
+}
+function colorFor(t){ // t:0(谷)..1(山)
+  const r=Math.round(59+(239-59)*t), gg=Math.round(130+(68-130)*t), b=Math.round(246+(68-246)*t);
+  return `rgb(${r},${gg},${b})`;
+}
+
+// ---- 描画(3D) ----
+function maxLgrid(){let m=0;for(let a=-2;a<=2;a+=0.25)for(let b=-2;b<=2;b+=0.25)m=Math.max(m,L(a,b));return m||1;}
+function drawScene(){
+  g.clearRect(0,0,cv.width,cv.height);
+  const G=26, d=4/G, mx=maxLgrid(), quads=[];
+  for(let i=0;i<G;i++)for(let j=0;j<G;j++){
+    const a0=-2+i*d, b0=-2+j*d;
+    const p=[proj(a0,L(a0,b0),b0),proj(a0+d,L(a0+d,b0),b0),proj(a0+d,L(a0+d,b0+d),b0+d),proj(a0,L(a0,b0+d),b0+d)];
+    const Lc=L(a0+d/2,b0+d/2);
+    quads.push({p, depth:(p[0].depth+p[1].depth+p[2].depth+p[3].depth)/4, t:Lc/mx});
+  }
+  quads.sort((A,B)=>A.depth-B.depth);
+  for(const q of quads){
+    g.beginPath();g.moveTo(q.p[0].x,q.p[0].y);for(let k=1;k<4;k++)g.lineTo(q.p[k].x,q.p[k].y);g.closePath();
+    g.fillStyle=colorFor(q.t);g.globalAlpha=0.92;g.fill();
+    g.globalAlpha=0.25;g.strokeStyle="#ffffff";g.lineWidth=0.5;g.stroke();g.globalAlpha=1;
+  }
+  // 軌跡
+  if(traj.length>1){
+    g.beginPath();g.strokeStyle="#b45309";g.lineWidth=2;
+    traj.forEach((t,i)=>{const p=proj(t.a,t.L+0.04,t.b);i?g.lineTo(p.x,p.y):g.moveTo(p.x,p.y);});
+    g.stroke();
+  }
+  // 玉
+  const pb=proj(ba,L(ba,bb)+0.06,bb);
+  g.beginPath();g.arc(pb.x,pb.y,8,0,7);g.fillStyle="#e8890c";g.fill();g.strokeStyle="#fff";g.lineWidth=2;g.stroke();
+}
+function drawTop(){
+  const W=top.width, G=60, d=4/G, mx=maxLgrid();
+  for(let i=0;i<G;i++)for(let j=0;j<G;j++){
+    const a=-2+i*d, b=-2+j*d;
+    tg.fillStyle=colorFor(L(a,b)/mx);
+    tg.fillRect(i/G*W,(1-(j+1)/G)*W,W/G+1,W/G+1);
+  }
+  if(traj.length>1){
+    tg.beginPath();tg.strokeStyle="#b45309";tg.lineWidth=2;
+    traj.forEach((t,i)=>{const x=(t.a+2)/4*W,y=(1-(t.b+2)/4)*W;i?tg.lineTo(x,y):tg.moveTo(x,y);});tg.stroke();
+  }
+  const x=(ba+2)/4*W,y=(1-(bb+2)/4)*W;
+  tg.beginPath();tg.arc(x,y,5,0,7);tg.fillStyle="#e8890c";tg.fill();tg.strokeStyle="#fff";tg.lineWidth=1.5;tg.stroke();
+}
+function draw(){drawScene();drawTop();}
+
+// ---- 勾配降下 ----
+function gd(){
+  const gr=gradL(ba,bb);
+  va=mom*va-lr*gr.a; vb=mom*vb-lr*gr.b;
+  ba=clamp(ba+va,-2.1,2.1); bb=clamp(bb+vb,-2.1,2.1);
+  traj.push({a:ba,b:bb,L:L(ba,bb)}); if(traj.length>400)traj.shift();
+  step++; last={loss:L(ba,bb), grad:Math.hypot(gr.a,gr.b)};
+}
+function resetBall(){
+  ba=(Math.random()*2-1)*1.7; bb=(Math.random()*2-1)*1.7; va=0;vb=0;traj=[{a:ba,b:bb,L:L(ba,bb)}];step=0;
+  last={loss:L(ba,bb),grad:0}; draw();updateInfo();
+}
+function updateInfo(){
+  document.getElementById('sStep').textContent=step;
+  document.getElementById('sLoss').textContent=last.loss.toFixed(3);
+  document.getElementById('sGrad').textContent=last.grad.toFixed(3);
+}
+
+// ---- ループ & UI ----
+function tick(){
+  if(!running && !autoSpin){return;}
+  if(running){for(let k=0;k<2;k++)gd();}
+  if(autoSpin) rotY+=0.004;
+  draw(); if(running)updateInfo();
+  if(running||autoSpin)requestAnimationFrame(tick);
+}
+function kick(){requestAnimationFrame(tick);}
+document.getElementById('run').onclick=function(){running=!running;this.textContent=running?"⏸ 止める":"▶ 下る";if(running||autoSpin)kick();};
+document.getElementById('reset').onclick=resetBall;
+document.getElementById('lr').oninput=function(){lr=+this.value/1000;document.getElementById('lrv').textContent=lr.toFixed(3);};
+document.getElementById('mom').oninput=function(){mom=+this.value/100;document.getElementById('momv').textContent=mom.toFixed(2);};
+document.getElementById('spin').onchange=function(){autoSpin=this.checked;if(autoSpin)kick();};
+document.querySelectorAll('.seg').forEach(b=>b.onclick=function(){
+  document.querySelectorAll('.seg').forEach(x=>x.classList.remove('on'));this.classList.add('on');
+  terrain=this.dataset.t; resetBall();
+});
+// マウスで回転
+let drag=false, lastX=0;
+cv.onmousedown=e=>{drag=true;lastX=e.clientX;};
+window.onmouseup=()=>drag=false;
+window.onmousemove=e=>{if(drag){rotY+=(e.clientX-lastX)*0.01;lastX=e.clientX;if(!running&&!autoSpin)draw();}};
+
+terrain='bowl';resetBall();kick();
+</script>
+</body>
+</html>
