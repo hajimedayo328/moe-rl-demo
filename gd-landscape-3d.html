@@ -54,11 +54,11 @@
       <button class="seg" data-t="bumpy">でこぼこ</button>
     </div>
     <div class="controls">
-      <label>学習率 <input id="lr" type="range" min="1" max="120" value="30"><span id="lrv" class="lab">0.030</span></label>
-      <label>慣性(momentum) <input id="mom" type="range" min="0" max="95" value="80"><span id="momv" class="lab">0.80</span></label>
+      <label>学習率 <input id="lr" type="range" min="1" max="120" value="18"><span id="lrv" class="lab">0.018</span></label>
+      <label>慣性(momentum) <input id="mom" type="range" min="0" max="95" value="62"><span id="momv" class="lab">0.62</span></label>
       <label>自動回転 <input id="spin" type="checkbox" checked></label>
     </div>
-    <canvas id="cv" width="480" height="420"></canvas>
+    <canvas id="cv" width="760" height="540" style="width:100%;max-width:760px"></canvas>
     <div class="stats">
       <div class="stat">ステップ<br><b id="sStep">0</b></div>
       <div class="stat">今の誤差(loss)<br><b id="sLoss">—</b></div>
@@ -95,8 +95,8 @@
 "use strict";
 const cv=document.getElementById('cv'), g=cv.getContext('2d');
 const topC=document.getElementById('top'), tg=topC.getContext('2d');
-let terrain='bowl', lr=0.03, mom=0.80, autoSpin=true;
-let rotY=0.7, ba=0, bb=0, va=0, vb=0, traj=[], step=0, running=false, last={loss:0,grad:0};
+let terrain='bowl', lr=0.018, mom=0.62, autoSpin=true;
+let rotY=0.7, ba=0, bb=0, va=0, vb=0, traj=[], step=0, running=false, last={loss:0,grad:0}, gdSkip=0;
 
 // ---- 損失の地形 L(a,b) ----
 function L(a,b){
@@ -113,7 +113,7 @@ function gradL(a,b){const e=0.0015; return {a:(L(a+e,b)-L(a-e,b))/(2*e), b:(L(a,
 const clamp=(v,lo,hi)=>Math.max(lo,Math.min(hi,v));
 
 // ---- 擬似3D投影 ----
-const cx=240, cy=255, scale=70, hScale=58, tilt=0.52;
+const cx=380, cy=362, scale=112, hScale=56, tilt=0.5;
 function proj(a,h,b){
   const c=Math.cos(rotY), s=Math.sin(rotY);
   const rx=a*c-b*s, rz=a*s+b*c;
@@ -188,7 +188,7 @@ function updateInfo(){
 // ---- ループ & UI ----
 function tick(){
   if(!running && !autoSpin){return;}
-  if(running){for(let k=0;k<2;k++)gd();}
+  if(running){ gdSkip=(gdSkip+1)%2; if(gdSkip===0) gd(); }
   if(autoSpin) rotY+=0.004;
   draw(); if(running)updateInfo();
   if(running||autoSpin)requestAnimationFrame(tick);
