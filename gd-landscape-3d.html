@@ -94,7 +94,7 @@
 <script>
 "use strict";
 const cv=document.getElementById('cv'), g=cv.getContext('2d');
-const top=document.getElementById('top'), tg=top.getContext('2d');
+const topC=document.getElementById('top'), tg=topC.getContext('2d');
 let terrain='bowl', lr=0.03, mom=0.80, autoSpin=true;
 let rotY=0.7, ba=0, bb=0, va=0, vb=0, traj=[], step=0, running=false, last={loss:0,grad:0};
 
@@ -152,7 +152,7 @@ function drawScene(){
   g.beginPath();g.arc(pb.x,pb.y,8,0,7);g.fillStyle="#e8890c";g.fill();g.strokeStyle="#fff";g.lineWidth=2;g.stroke();
 }
 function drawTop(){
-  const W=top.width, G=60, d=4/G, mx=maxLgrid();
+  const W=topC.width, G=60, d=4/G, mx=maxLgrid();
   for(let i=0;i<G;i++)for(let j=0;j<G;j++){
     const a=-2+i*d, b=-2+j*d;
     tg.fillStyle=colorFor(L(a,b)/mx);
